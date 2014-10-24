@@ -13,9 +13,13 @@ pass = (arg, funcs...) ->
     arg = fn arg
   arg
 
+curry = (fn, args...) ->
+  (rest...) ->
+    fn.apply @, args.concat rest
+
 compileCoffee = (stream) ->
-  justCoffee = plugin.filter '**/*.coffee'
-  stream.pipe justCoffee
+  stream
+    .pipe justCoffee = plugin.filter '**/*.coffee'
     .pipe plugin.plumber()
     .pipe plugin.sourcemaps.init()
     .pipe plugin.coffee()
@@ -24,20 +28,22 @@ compileCoffee = (stream) ->
     .pipe justCoffee.restore()
 
 copyHtml = (stream) ->
-  justHtml   = plugin.filter '**/*.html'
-  stream.pipe justHtml
+  stream
+    .pipe justHtml   = plugin.filter '**/*.html'
     .pipe justHtml.restore()
 
 compileLess = (stream) ->
-  justLess   = plugin.filter '**/*.less'
-  stream.pipe justLess
+  stream
+    .pipe justLess   = plugin.filter '**/*.less'
+    .pipe plugin.sourcemaps.init()
     .pipe plugin.less()
+    .pipe plugin.sourcemaps.write()
     .pipe plugin.rename { dirname: 'css' }
     .pipe justLess.restore()
 
 optimizeCss = (stream) ->
-  justCss   = plugin.filter '**/*.css'
-  stream.pipe justCss
+  stream
+    .pipe justCss   = plugin.filter '**/*.css'
     .pipe plugin.concat 'styles.css'
     .pipe plugin.uncss({ html: ['src/index.html'] })
     .pipe plugin.cssmin()
@@ -53,7 +59,6 @@ prepareAll = (stream) ->
     copyHtml
     compileCoffee
     compileLess
-    optimizeCss
 
 saveAll = (target, stream) ->
   stream
@@ -62,24 +67,27 @@ saveAll = (target, stream) ->
     .on 'error', plugin.util.log
 
 gulp.task 'build', [], ->
-  del.sync 'build'
-  stream = gulp.src 'src/*'
-  stream = prepareAll stream
-  stream = saveAll 'build', stream
+  del.sync ['build']
+  pass gulp.src('src/*'),
+    prepareAll
+    curry saveAll, 'build'
 
 gulp.task 'dist', [], ->
   del.sync 'dist'
-  stream = gulp.src 'src/*'
-  stream = prepareAll stream
-  stream = optimizeAll stream
-  stream = saveAll 'dist', stream
+  pass gulp.src('src/*'),
+    prepareAll
+    optimizeAll
+    curry saveAll, 'build'
 
 
 gulp.task 'watch', [], ->
   plugin.livereload.listen()
-  stream = plugin.watch 'src/*.coffee', { emitOnGlob: false }
-  stream = prepareAll stream
-  stream = saveAll 'build', stream
+  stream = pass plugin.watch('src/*', { emitOnGlob: false }),
+    prepareAll
+    curry saveAll, 'build'
+
+  stream
+    .pipe out()
     .pipe plugin.livereload()
 
 gulp.task 'connect', [], ->
