@@ -8,6 +8,11 @@ out = -> es.map (file, next) ->
   console.log file.history.reverse().join(" <- ")
   next(null, file)
 
+pass = (arg, funcs...) ->
+  for fn in funcs
+    arg = fn arg
+  arg
+
 compileCoffee = (stream) ->
   justCoffee = plugin.filter '**/*.coffee'
   stream.pipe justCoffee
@@ -40,13 +45,15 @@ optimizeCss = (stream) ->
     .pipe justCss.restore()
 
 optimizeAll = (stream) ->
-    stream = optimizeCss stream
+  pass stream,
+    optimizeCss
 
 prepareAll = (stream) ->
-  stream = copyHtml stream
-  stream = compileCoffee stream
-  stream = compileLess stream
-  stream = optimizeCss stream
+  pass stream,
+    copyHtml
+    compileCoffee
+    compileLess
+    optimizeCss
 
 saveAll = (target, stream) ->
   stream
