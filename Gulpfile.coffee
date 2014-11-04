@@ -12,6 +12,8 @@ concatStream = require 'concat-stream'
 streamReduce = require 'stream-reduce'
 highland = require 'highland'
 
+q = require 'q'
+
 out = -> es.map (file, next) ->
   # console.log file.history.reverse().join(" <- ")
   console.log file
@@ -144,11 +146,16 @@ gulp.task 'default', (done) ->
 
 detective = require "detective"
 fs = require "fs"
-gulp.task 'test', (done)->
-  pass gulp.src('src/app.coffee', { read: false }),
-    npmDeps
-  .pipe(out())
-  .pipe(es.writeArray((err, arr) -> console.log arr))
+
+gulp.task 'test', (done) ->
+  plugin.watch('src/*.coffee', { read: false })
+    .pipe(out())
+    # .pipe(es.writeArray((err, arr) -> console.log arr; done()))
+    .pipe es.map (file, next) ->
+      npmDeps gulp.src file.path
+        .toArray (deps) ->
+          console.log deps
+
 
 
 npmDeps = (stream) ->
@@ -161,30 +168,27 @@ npmDeps = (stream) ->
       highland(Object.keys(file.deps))
         .filter (id) -> ! isLocal id
 
-gulp.task 'build-source', (done) ->
-  npmDeps(gulp.src('./src/*.coffee', { read: false }))
-    .pipe es.writeArray (err, deps) ->
-      b = browserify('./src/app.coffee', {
-              bundleExternal: true,
-              fullPaths: true,
-              debug: false,
-              extensions: ['.coffee']
-      })
-      b.transform({}, 'coffee-reactify')
-      b.external(deps)
-      b.bundle()
-          .pipe(source("app.js"))
-          .pipe(buffer())
-          .pipe gulp.dest('build/js')
-          .on 'end', -> done()
+gulp.task 'build-source', (taskDone) ->
+  npmDeps(gulp.src('./src/*.coffee', { read: false })).toArray (deps) ->
+    b = browserify({
+      entries: ['./src/app.coffee'],
+      debug: false,
+      extensions: ['.coffee']
+    })
+    b.transform({}, 'coffee-reactify')
+    b.external(deps)
+    b.bundle()
+        .pipe(source("app.js"))
+        .pipe(buffer())
+        .pipe gulp.dest('build/js')
+        .on 'end', taskDone
 
-gulp.task 'build-externals', (done) ->
+gulp.task 'build-externals', (taskDone) ->
   npmDeps(gulp.src('./src/*.coffee', { read: false }))
     .pipe es.writeArray (err, deps) ->
         console.log deps
         b = browserify({
           entries: deps
-          # bundleExternal: false,
           # fullPaths: true,
           # debug: false,
           extensions: ['.coffee']
@@ -195,7 +199,7 @@ gulp.task 'build-externals', (done) ->
           .pipe(source("ext.js"))
           .pipe(buffer())
           .pipe gulp.dest('build/js')
-          .on 'end', done
+          .on 'end', taskDone
 
   # d = b.pipeline.get('emit-deps')
   # d.on('data', (args...)-> console.log args)

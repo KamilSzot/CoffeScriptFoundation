@@ -39,11 +39,13 @@
     "module-deps": "^3.5.6",
     "orchestrator": "^0.3.7",
     "plumber": "^0.4.4",
+    "q": "^1.0.1",
     "rimraf": "^2.2.8",
     "run-sequence": "^1.0.1",
     "stream-reduce": "^1.0.3",
     "vinyl-buffer": "^1.0.0",
-    "vinyl-source-stream": "^1.0.0"
+    "vinyl-source-stream": "^1.0.0",
+    "when": "^3.5.2"
   },
   "dependencies": {
     "jquery": "^2.1.1",
