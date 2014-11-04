@@ -4,8 +4,17 @@ es      = require "event-stream"
 runSequence = require "run-sequence"
 del     = require "del"
 
+browserify = require "browserify"
+source = require 'vinyl-source-stream'
+buffer = require 'vinyl-buffer'
+moduleDeps = require 'module-deps'
+concatStream = require 'concat-stream'
+streamReduce = require 'stream-reduce'
+highland = require 'highland'
+
 out = -> es.map (file, next) ->
-  console.log file.history.reverse().join(" <- ")
+  # console.log file.history.reverse().join(" <- ")
+  console.log file
   next(null, file)
 
 pass = (arg, funcs...) ->
@@ -18,11 +27,30 @@ curry = (fn, args...) ->
     fn.apply @, args.concat rest
 
 
+
+browserifyCoffee = (stream) ->
+  stream
+    .pipe justCoffee = plugin.filter('**/*.coffee')
+    .pipe es.map (file, next) ->
+      console.log file.path
+      browserify(file.path, {
+        debug : true, # !gulp.env.production,
+        extensions: ['.csjx', '.coffee']
+        fullPaths: true,
+        bundleExternal: false
+      }).external('jquery').transform('coffee-reactify').bundle().pipe(source('js/app.js')).pipe(buffer()).pipe(es.map (file)-> next(null, file))
+
+    # .pipe plugin.rename({ extname: '.cjsx' })
+    # .pipe out()
+    .pipe justCoffee.restore()
+
+
 compileCoffee = (stream) ->
   stream
     .pipe justCoffee = plugin.filter('**/*.coffee')
     .pipe plugin.plumber()
     .pipe plugin.sourcemaps.init()
+    .pipe plugin.coffeeReactTransform()
     .pipe plugin.coffee()
     .pipe plugin.sourcemaps.write()
     .pipe plugin.rename({ dirname: 'js' })
@@ -72,7 +100,7 @@ optimizeAll = (stream) ->
 prepareAll = (stream) ->
   pass stream,
     copyHtml
-    compileCoffee
+    browserifyCoffee
     compileLess
 
 saveAll = (target, stream) ->
@@ -81,8 +109,8 @@ saveAll = (target, stream) ->
     .pipe out()
     .on 'error', plugin.util.log
 
-gulp.task 'build', [], ->
-  del.sync ['build']
+gulp.task 'build', ['build-externals'], ->
+  # del.sync ['build']
   pass gulp.src('src/*'),
     prepareAll
     curry saveAll, 'build'
@@ -113,3 +141,69 @@ gulp.task 'connect', [], ->
 
 gulp.task 'default', (done) ->
   runSequence 'build', 'connect', 'watch', done
+
+detective = require "detective"
+fs = require "fs"
+gulp.task 'test', (done)->
+  pass gulp.src('src/app.coffee', { read: false }),
+    npmDeps
+  .pipe(out())
+  .pipe(es.writeArray((err, arr) -> console.log arr))
+
+
+npmDeps = (stream) ->
+  isLocal = (id) -> /^(\.\/|\.\.\/|\/)/.test(id)
+  stream
+    .pipe(es.map (file, next) -> next(null, file.path ))
+    .pipe moduleDeps transform: 'coffee-reactify', extensions: ['.coffee', '.js'], filter: isLocal
+    .pipe highland()
+    .flatMap (file, next) ->
+      highland(Object.keys(file.deps))
+        .filter (id) -> ! isLocal id
+
+gulp.task 'build-source', (done) ->
+  npmDeps(gulp.src('./src/*.coffee', { read: false }))
+    .pipe es.writeArray (err, deps) ->
+      b = browserify('./src/app.coffee', {
+              bundleExternal: true,
+              fullPaths: true,
+              debug: false,
+              extensions: ['.coffee']
+      })
+      b.transform({}, 'coffee-reactify')
+      b.external(deps)
+      b.bundle()
+          .pipe(source("app.js"))
+          .pipe(buffer())
+          .pipe gulp.dest('build/js')
+          .on 'end', -> done()
+
+gulp.task 'build-externals', (done) ->
+  npmDeps(gulp.src('./src/*.coffee', { read: false }))
+    .pipe es.writeArray (err, deps) ->
+        console.log deps
+        b = browserify({
+          entries: deps
+          # bundleExternal: false,
+          # fullPaths: true,
+          # debug: false,
+          extensions: ['.coffee']
+        })
+        b.transform({}, 'coffee-reactify')
+        b.require(deps)
+        b.bundle()
+          .pipe(source("ext.js"))
+          .pipe(buffer())
+          .pipe gulp.dest('build/js')
+          .on 'end', done
+
+  # d = b.pipeline.get('emit-deps')
+  # d.on('data', (args...)-> console.log args)
+  # deps = [];
+  # d.push(es.map (file, next) ->
+  #   if !file.entry && file.file.indexOf('node_modules') >= 0
+  #     next(null, file)
+  #   else
+  #     deps.push(file.deps)
+  #     next(null)
+  # )
