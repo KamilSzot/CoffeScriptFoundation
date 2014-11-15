@@ -1,7 +1,7 @@
 # @cjsx React.DOM
 
 $ = require "jquery"
-
+esprima = require "esprima"
 mod = require "./section/mod"
 
 document.addEventListener 'DOMContentLoaded', ->

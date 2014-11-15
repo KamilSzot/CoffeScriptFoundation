@@ -16,7 +16,7 @@ q = require 'q'
 
 out = -> es.map (file, next) ->
   # console.log file.history.reverse().join(" <- ")
-  console.log file
+  console.log file.path
   next(null, file)
 
 pass = (arg, funcs...) ->
@@ -27,24 +27,6 @@ pass = (arg, funcs...) ->
 curry = (fn, args...) ->
   (rest...) ->
     fn.apply @, args.concat rest
-
-
-
-browserifyCoffee = (stream) ->
-  stream
-    .pipe justCoffee = plugin.filter('**/*.coffee')
-    .pipe es.map (file, next) ->
-      console.log file.path
-      browserify(file.path, {
-        debug : true, # !gulp.env.production,
-        extensions: ['.csjx', '.coffee']
-        fullPaths: true,
-        bundleExternal: false
-      }).external('jquery').transform('coffee-reactify').bundle().pipe(source('js/app.js')).pipe(buffer()).pipe(es.map (file)-> next(null, file))
-
-    # .pipe plugin.rename({ extname: '.cjsx' })
-    # .pipe out()
-    .pipe justCoffee.restore()
 
 
 compileCoffee = (stream) ->
@@ -102,7 +84,8 @@ optimizeAll = (stream) ->
 prepareAll = (stream) ->
   pass stream,
     copyHtml
-    browserifyCoffee
+    # browserifyCoffee
+    compileCoffee
     compileLess
 
 saveAll = (target, stream) ->
@@ -126,7 +109,7 @@ gulp.task 'dist', [], ->
     curry saveAll, 'dist'
 
 
-gulp.task 'watch', [], ->
+gulp.task 'watch', ['build'], ->
   plugin.livereload.listen()
   stream = pass plugin.watch('src/*', { emitOnGlob: false }),
     prepareAll
